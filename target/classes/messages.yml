@@ -1,0 +1,104 @@
+# Kits — all player-facing text.
+# Formatting uses MiniMessage: https://docs.advntr.dev/minimessage/format.html
+# Placeholders: {kit} = kit display name, {time} = remaining cooldown.
+# Delete a line to restore its default. Changes apply after a restart/reload.
+
+prefix: "<dark_gray>[<gold>Kits</gold>]</dark_gray> "
+
+gui:
+  # Menu titles
+  kits-title: "<bold><gray>Kits</gray></bold>"
+  layouts-title: "<gold><bold>⚙ Kit Layouts</bold></gold>"
+  layout-title: "<gold><bold>Layout:</bold></gold> <yellow>{kit}</yellow>"
+  editor-title: "<red><bold>Editing:</bold></red> <yellow>{kit}</yellow>"
+  preview-title: "<gray><bold>Preview:</bold></gray> <yellow>{kit}</yellow>"
+  arrange-title: "<gold><bold>Arrange Kits</bold></gold>"
+
+  # How kits appear in the menus
+  kit-name: "<yellow><bold>{kit}</bold></yellow> <gray>Kit"
+  kit-name-locked: "<red><bold>{kit}</bold></red> <gray>Kit"
+  layout-entry-name: "<gold><bold>{kit}</bold></gold> <gray>Layout"
+
+  # Kit lore lines
+  ready: "<green><bold>Ready!</bold></green>"
+  cooldown: "<red>On cooldown: <white>{time}</white>"
+  locked: "<red>Locked"
+  locked-lore: "<gray>You don't have permission to use this kit."
+  claim-hint: "<yellow><italic>Left-click</italic></yellow> <gray>to claim"
+  preview-hint: "<yellow><italic>Right-click</italic></yellow> <gray>to preview"
+  edit-hint: "<yellow><italic>Click</italic></yellow> <gray>to edit"
+
+  # Layouts menu entries
+  layout-entry-lore:
+    - "<gray>Rearrange where this kit's items"
+    - "<gray>are placed when you claim it."
+  layout-custom: "<aqua>Custom layout saved"
+  layout-default: "<dark_gray>Using default layout"
+
+  # Buttons
+  close-button: "<red><bold>Close</bold></red>"
+  back-button: "<yellow>« Back"
+  back-button-lore: "<gray>Back to the kits menu"
+  prev-button: "<yellow>« Previous Page"
+  prev-button-lore: "<gray>Go back a page"
+  next-button: "<yellow>Next Page »"
+  next-button-lore: "<gray>See more kits"
+  page-info: "<gold><bold>Page {page}/{pages}</bold></gold>"
+
+  # /kit editor (arrange kits)
+  arrange-move-hint: "<yellow><italic>Click</italic></yellow> <gray>to pick up & move"
+  arrange-selected: "<green><bold>Picked up!</bold></green> <gray>click a slot to place"
+  arrange-place-here: "<green>Empty slot"
+  arrange-place-here-lore: "<yellow><italic>Click</italic></yellow> <gray>to place the kit here"
+  arrange-info: "<gold><bold>Arrange Kits</bold></gold>"
+  arrange-info-lore:
+    - "<gray>This mirrors the <white>/kits</white> menu."
+    - "<gray>Click a kit to pick it up, then"
+    - "<gray>click any slot to move it there."
+    - "<gray>Click a filled slot to swap."
+    - ""
+    - "<gray>Changes save instantly."
+  layouts-button: "<gold><bold>⚙ Kit Layouts</bold></gold>"
+  layouts-button-lore:
+    - "<gray>Customize where each kit's items"
+    - "<gray>go in your inventory."
+    - ""
+    - "<yellow><italic>Click</italic></yellow> <gray>to open"
+  # Coin shop
+  shop-title: "<gold><bold>Coin Shop</bold></gold>"
+  shop-locked: "<gold>Buy in /coinshop for <yellow>{price}</yellow> coins"
+  shop-price: "<gold>Price: <yellow>{price}</yellow> coins"
+  shop-owned: "<green><bold>✔ Owned</bold></green> <gray>— claim it in /kits"
+  shop-buy-hint: "<yellow><italic>Click to buy</italic></yellow>"
+  shop-cant-afford: "<red>Not enough coins <gray>(you have {coins})"
+  shop-balance: "<gold><bold>Your coins:</bold></gold> <yellow>{coins}</yellow>"
+  reset-button: "<red><bold>⟲ Reset to Default</bold></red>"
+  reset-button-lore:
+    - "<gray>Click to reset your layout"
+    - "<gray>back to the kit's default."
+  editor-info: "<gold><bold>Editing kit:</bold></gold> <yellow>{kit}</yellow>"
+  editor-info-lore:
+    - "<gray>Row 1: hotbar • Rows 2-4: inventory"
+    - "<gray>Row 5: helmet, chest, legs, boots, offhand"
+    - ""
+    - "<green>Close to save."
+
+messages:
+  claimed: "<green>Claimed the <yellow>{kit}</yellow> kit!"
+  inventory-full: "<red>Your inventory is too full to claim the <white>{kit}</white> kit — make room first."
+  no-access: "<red>You don't have access to the <white>{kit}</white> kit."
+  on-cooldown: "<red>The <white>{kit}</white> kit is on cooldown — available in <white>{time}</white>."
+  received: "<green>You received the <yellow>{kit}</yellow> kit."
+  layout-saved: "<green>Layout saved!"
+  layout-reset: "<yellow>Layout reset to the kit's default."
+  layout-not-saved: "<red>Layout not saved — the items no longer match the kit."
+  kit-saved: "<green>Kit <yellow>{kit}</yellow> saved — contents and default layout updated."
+
+coins:
+  earned: "<gold>+{amount} coins <gray>(total: {coins})"
+  balance: "<gold>You have <yellow>{coins}</yellow> coins."
+  other-balance: "<gray>{player} has <yellow>{coins}</yellow> coins."
+  bought: "<green>Bought the <yellow>{kit}</yellow> kit for <gold>{price}</gold> coins! <gray>Claim it in /kits."
+  cant-afford: "<red>The <white>{kit}</white> kit costs <gold>{price}</gold> coins — you have <yellow>{coins}</yellow>."
+  already-owned: "<yellow>You already own the {kit} kit."
+  admin-updated: "<green>{player} now has <yellow>{coins}</yellow> coins."

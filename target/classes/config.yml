@@ -1,0 +1,7 @@
+# Kits — coin & shop settings.
+
+coins:
+  # Master switch for earning coins from kills.
+  enabled: true
+  # Coins the killer earns per player kill.
+  per-kill: 10

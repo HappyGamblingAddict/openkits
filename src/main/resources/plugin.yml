@@ -1,0 +1,38 @@
+name: Kits
+version: 1.0.0
+main: eu.fakemoon.altarkits.AltarKitsPlugin
+api-version: '1.21'
+author: fakemoon
+description: GUI kit system with cooldowns, previews and per-player kit layouts.
+
+commands:
+  kits:
+    description: Open the kits menu.
+    permission: kits.use
+  kitlayouts:
+    description: Customize where kit items go in your inventory.
+    aliases: [kitlayout, layouts]
+    permission: kits.use
+  kit:
+    description: Admin kit management.
+    permission: kits.admin
+    usage: /kit help
+  coinshop:
+    description: Buy kits with coins.
+    aliases: [kitshop, shop]
+    permission: kits.use
+  coins:
+    description: Check your coin balance (admins can give/set).
+    aliases: [balance, bal]
+    permission: kits.use
+
+permissions:
+  kits.use:
+    description: Open the kits GUI and claim kits.
+    default: true
+  kits.admin:
+    description: Create, edit and delete kits.
+    default: op
+  kits.cooldown.bypass:
+    description: Bypass kit cooldowns.
+    default: op
