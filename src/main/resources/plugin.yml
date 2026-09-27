@@ -3,7 +3,7 @@ version: 1.0.0
 main: eu.fakemoon.altarkits.AltarKitsPlugin
 api-version: '1.21'
 author: fakemoon
-description: GUI kit system with cooldowns, previews and per-player kit layouts.
+description: GUI kit system with cooldowns, previews and per-player kit layouts. Paper + Folia.
 
 commands:
   kits:

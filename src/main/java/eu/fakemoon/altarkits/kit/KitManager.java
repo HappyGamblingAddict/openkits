@@ -5,7 +5,6 @@ import eu.fakemoon.altarkits.data.PlayerDataManager;
 import eu.fakemoon.altarkits.util.Items;
 import eu.fakemoon.altarkits.util.Messages;
 import eu.fakemoon.altarkits.util.Text;
-import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
@@ -22,17 +21,18 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class KitManager {
 
     private final AltarKitsPlugin plugin;
     private final PlayerDataManager playerData;
-    private final Map<String, Kit> kits = new LinkedHashMap<>();
+    /** Concurrent because on Folia admin commands and player claims run on different threads. */
+    private final Map<String, Kit> kits = new ConcurrentHashMap<>();
     private final AtomicReference<String> pendingSave = new AtomicReference<>();
     private final Object ioLock = new Object();
 
@@ -45,7 +45,7 @@ public final class KitManager {
         return new File(plugin.getDataFolder(), "kits.yml");
     }
 
-    public void load() {
+    public synchronized void load() {
         kits.clear();
         File file = file();
         if (!file.exists()) return;
@@ -82,7 +82,7 @@ public final class KitManager {
         }
     }
 
-    public void saveAll() {
+    public synchronized void saveAll() {
         YamlConfiguration yaml = new YamlConfiguration();
         for (Kit kit : kits.values()) {
             String path = "kits." + kit.name() + ".";
@@ -96,10 +96,10 @@ public final class KitManager {
                 yaml.set(path + "contents." + entry.getKey(), Items.toBase64(entry.getValue()));
             }
         }
-        // Serialize on the main thread, write async — sync writes can stall the
+        // Serialize on the calling thread, write async — sync writes can stall the
         // server when the folder is being synced (e.g. OneDrive).
         pendingSave.set(yaml.saveToString());
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        plugin.async(() -> {
             String data = pendingSave.getAndSet(null);
             if (data == null) return;
             synchronized (ioLock) {
@@ -139,7 +139,7 @@ public final class KitManager {
     }
 
     /** Creates a kit from the creator's current inventory (hotbar, storage, armor, offhand). */
-    public Kit create(String name, Player from) {
+    public synchronized Kit create(String name, Player from) {
         Kit kit = new Kit(name);
         kit.setDisplayName(Text.capitalize(name));
         Map<Integer, ItemStack> contents = new HashMap<>();
@@ -164,13 +164,13 @@ public final class KitManager {
         return kit;
     }
 
-    public void delete(Kit kit) {
+    public synchronized void delete(Kit kit) {
         kits.remove(kit.name());
         saveAll();
     }
 
     /** Registers a pre-built kit (used by the Unstable character-kit generator). */
-    public void define(Kit kit) {
+    public synchronized void define(Kit kit) {
         kits.put(kit.name(), kit);
     }
 
@@ -196,7 +196,10 @@ public final class KitManager {
         return sorted().stream().filter(Kit::isBuyable).toList();
     }
 
-    /** Claims a kit with permission + cooldown checks; messages the player. */
+    /**
+     * Claims a kit with permission + cooldown checks; messages the player.
+     * Must run on the player's own thread (see {@link #give}, which defers for you).
+     */
     public boolean claim(Player player, Kit kit) {
         if (!hasAccess(player, kit)) {
             Messages.send(player, "messages.no-access", "kit", kit.displayName());
@@ -223,10 +226,16 @@ public final class KitManager {
         return true;
     }
 
-    /** Gives a kit ignoring permission and cooldown (admin /kit give). */
+    /**
+     * Gives a kit ignoring permission and cooldown (admin /kit give).
+     * Safe from any thread: the inventory write is deferred to the player's thread,
+     * which on Folia may be a different region than the caller's.
+     */
     public void give(Player target, Kit kit) {
-        apply(target, resolveLayout(target, kit));
-        Messages.send(target, "messages.received", "kit", kit.displayName());
+        plugin.sync(target, () -> {
+            apply(target, resolveLayout(target, kit));
+            Messages.send(target, "messages.received", "kit", kit.displayName());
+        });
     }
 
     /**
@@ -292,6 +301,7 @@ public final class KitManager {
         return true;
     }
 
+    /** Places a resolved layout. Must run on the player's own thread. */
     private void apply(Player player, Map<Integer, ItemStack> layout) {
         PlayerInventory inv = player.getInventory();
         List<ItemStack> leftover = new ArrayList<>();

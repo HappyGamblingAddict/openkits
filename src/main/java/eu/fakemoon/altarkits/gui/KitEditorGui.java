@@ -126,7 +126,7 @@ public final class KitEditorGui implements KitsHolder {
         switch (slot) {
             case SLOT_CLOSE -> {
                 clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1f);
-                plugin.sync(clicker::closeInventory);
+                plugin.sync(clicker, clicker::closeInventory);
                 return;
             }
             case SLOT_PREV -> {

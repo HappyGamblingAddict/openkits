@@ -9,8 +9,9 @@ import eu.fakemoon.altarkits.command.KitsCommand;
 import eu.fakemoon.altarkits.data.PlayerDataManager;
 import eu.fakemoon.altarkits.gui.GuiListener;
 import eu.fakemoon.altarkits.kit.KitManager;
+import eu.fakemoon.altarkits.util.Folia;
 import eu.fakemoon.altarkits.util.Messages;
-import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -44,7 +45,8 @@ public final class AltarKitsPlugin extends JavaPlugin {
         Objects.requireNonNull(getCommand("kit")).setExecutor(admin);
         Objects.requireNonNull(getCommand("kit")).setTabCompleter(admin);
 
-        getLogger().info("Kits enabled with " + kits.all().size() + " kit(s).");
+        getLogger().info("Kits enabled with " + kits.all().size() + " kit(s) on "
+                + (Folia.isFolia() ? "Folia" : "Paper") + ".");
     }
 
     @Override
@@ -61,8 +63,28 @@ public final class AltarKitsPlugin extends JavaPlugin {
         return playerData;
     }
 
-    /** Runs a task on the next tick — used to switch GUIs safely from inside click events. */
+    /**
+     * Runs a task on the player's own region thread next tick — used to switch GUIs
+     * safely from inside click events, and to touch a player from another thread
+     * (e.g. a console command or another player's region).
+     *
+     * <p>On Paper this is just the main thread, on Folia the thread that owns the
+     * player, which is the only thread allowed to open/close their inventory.
+     */
+    public void sync(Player player, Runnable task) {
+        player.getScheduler().run(this, scheduled -> task.run(), null);
+    }
+
+    /**
+     * Runs a task on the global region thread next tick. For server-wide work that
+     * touches no specific player (config reloads, onDisable, …).
+     */
     public void sync(Runnable task) {
-        Bukkit.getScheduler().runTask(this, task);
+        getServer().getGlobalRegionScheduler().run(this, scheduled -> task.run());
+    }
+
+    /** Runs a task off the server threads — for file IO only. */
+    public void async(Runnable task) {
+        getServer().getAsyncScheduler().runNow(this, scheduled -> task.run());
     }
 }

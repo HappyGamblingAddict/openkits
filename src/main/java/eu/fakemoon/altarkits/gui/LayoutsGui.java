@@ -106,20 +106,20 @@ public final class LayoutsGui implements KitsHolder {
         switch (slot) {
             case SLOT_BACK -> {
                 clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1f);
-                plugin.sync(() -> KitsGui.open(plugin, clicker));
+                plugin.sync(clicker, () -> KitsGui.open(plugin, clicker));
                 return;
             }
             case SLOT_PREV -> {
                 if (page > 0) {
                     clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-                    plugin.sync(() -> open(plugin, clicker, page - 1));
+                    plugin.sync(clicker, () -> open(plugin, clicker, page - 1));
                 }
                 return;
             }
             case SLOT_NEXT -> {
                 if (page < pages - 1) {
                     clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-                    plugin.sync(() -> open(plugin, clicker, page + 1));
+                    plugin.sync(clicker, () -> open(plugin, clicker, page + 1));
                 }
                 return;
             }
@@ -130,6 +130,6 @@ public final class LayoutsGui implements KitsHolder {
         Kit kit = slot >= 0 && slot < bySlot.length ? bySlot[slot] : null;
         if (kit == null) return;
         clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
-        plugin.sync(() -> LayoutEditorGui.open(plugin, clicker, kit, LayoutEditorGui.Mode.PLAYER));
+        plugin.sync(clicker, () -> LayoutEditorGui.open(plugin, clicker, kit, LayoutEditorGui.Mode.PLAYER));
     }
 }

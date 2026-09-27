@@ -19,7 +19,8 @@ import java.util.List;
  */
 public final class Messages {
 
-    private static YamlConfiguration yaml = new YamlConfiguration();
+    /** Volatile because /kit reload swaps it on the global thread while other regions may be reading. */
+    private static volatile YamlConfiguration yaml = new YamlConfiguration();
 
     private Messages() {
     }
