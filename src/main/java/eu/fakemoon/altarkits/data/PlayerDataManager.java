@@ -1,14 +1,13 @@
 package eu.fakemoon.altarkits.data;
 
+import eu.fakemoon.altarkits.AltarKitsPlugin;
 import eu.fakemoon.altarkits.util.Items;
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -19,16 +18,23 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Per-player cooldown expiries and custom kit layouts, stored in playerdata/&lt;uuid&gt;.yml. */
+/**
+ * Per-player cooldown expiries, coins, purchases and custom kit layouts, stored in
+ * playerdata/&lt;uuid&gt;.yml.
+ *
+ * <p>Every public method is synchronized: on Folia two players in different regions
+ * are handled on different threads, so the cache and the read-modify-write sequences
+ * above it need a lock. On Paper this is a no-op cost-wise (single thread).
+ */
 public final class PlayerDataManager implements Listener {
 
-    private final JavaPlugin plugin;
+    private final AltarKitsPlugin plugin;
     private final File dir;
     private final Map<UUID, YamlConfiguration> cache = new HashMap<>();
     private final Map<UUID, String> pendingWrites = new ConcurrentHashMap<>();
     private final Object ioLock = new Object();
 
-    public PlayerDataManager(JavaPlugin plugin) {
+    public PlayerDataManager(AltarKitsPlugin plugin) {
         this.plugin = plugin;
         this.dir = new File(plugin.getDataFolder(), "playerdata");
         this.dir.mkdirs();
@@ -43,15 +49,15 @@ public final class PlayerDataManager implements Listener {
     }
 
     /**
-     * Serializes on the main thread (fast, in-memory) but writes to disk async —
+     * Serializes on the calling thread (fast, in-memory) but writes to disk async —
      * a synchronous write can stall for seconds when the folder is being synced
      * (e.g. OneDrive), which froze the server long enough to trip the watchdog.
      */
-    private void save(UUID id) {
+    private synchronized void save(UUID id) {
         YamlConfiguration yaml = cache.get(id);
         if (yaml == null) return;
         pendingWrites.put(id, yaml.saveToString());
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        plugin.async(() -> {
             String data = pendingWrites.get(id);
             if (data == null) return; // an earlier task already wrote fresher data
             synchronized (ioLock) {
@@ -80,17 +86,17 @@ public final class PlayerDataManager implements Listener {
     }
 
     /** Epoch millis at which the kit becomes claimable again; 0 = never claimed / ready. */
-    public long cooldownExpiry(UUID id, String kit) {
+    public synchronized long cooldownExpiry(UUID id, String kit) {
         return data(id).getLong("cooldowns." + kit, 0L);
     }
 
-    public void setCooldownExpiry(UUID id, String kit, long expiryMillis) {
+    public synchronized void setCooldownExpiry(UUID id, String kit, long expiryMillis) {
         data(id).set("cooldowns." + kit, expiryMillis);
         save(id);
     }
 
     /** The player's saved layout for a kit, or null if they use the default. */
-    public Map<Integer, ItemStack> layout(UUID id, String kit) {
+    public synchronized Map<Integer, ItemStack> layout(UUID id, String kit) {
         ConfigurationSection section = data(id).getConfigurationSection("layouts." + kit);
         if (section == null) return null;
         Map<Integer, ItemStack> out = new HashMap<>();
@@ -107,7 +113,7 @@ public final class PlayerDataManager implements Listener {
         return out.isEmpty() ? null : out;
     }
 
-    public void setLayout(UUID id, String kit, Map<Integer, ItemStack> layout) {
+    public synchronized void setLayout(UUID id, String kit, Map<Integer, ItemStack> layout) {
         YamlConfiguration yaml = data(id);
         yaml.set("layouts." + kit, null);
         for (Map.Entry<Integer, ItemStack> entry : layout.entrySet()) {
@@ -116,30 +122,30 @@ public final class PlayerDataManager implements Listener {
         save(id);
     }
 
-    public boolean hasLayout(UUID id, String kit) {
+    public synchronized boolean hasLayout(UUID id, String kit) {
         return data(id).isConfigurationSection("layouts." + kit);
     }
 
     // ---------------------------------------------------------------- coins & purchases
 
-    public long coins(UUID id) {
+    public synchronized long coins(UUID id) {
         return data(id).getLong("coins", 0L);
     }
 
-    public void setCoins(UUID id, long amount) {
+    public synchronized void setCoins(UUID id, long amount) {
         data(id).set("coins", Math.max(0, amount));
         save(id);
     }
 
-    public void addCoins(UUID id, long delta) {
+    public synchronized void addCoins(UUID id, long delta) {
         setCoins(id, coins(id) + delta);
     }
 
-    public boolean hasPurchased(UUID id, String kit) {
+    public synchronized boolean hasPurchased(UUID id, String kit) {
         return data(id).getStringList("purchases").contains(kit.toLowerCase(java.util.Locale.ROOT));
     }
 
-    public void addPurchase(UUID id, String kit) {
+    public synchronized void addPurchase(UUID id, String kit) {
         String key = kit.toLowerCase(java.util.Locale.ROOT);
         java.util.List<String> owned = data(id).getStringList("purchases");
         if (!owned.contains(key)) {
@@ -149,13 +155,13 @@ public final class PlayerDataManager implements Listener {
         }
     }
 
-    public void clearLayout(UUID id, String kit) {
+    public synchronized void clearLayout(UUID id, String kit) {
         data(id).set("layouts." + kit, null);
         save(id);
     }
 
     @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
+    public synchronized void onQuit(PlayerQuitEvent event) {
         cache.remove(event.getPlayer().getUniqueId());
     }
 }

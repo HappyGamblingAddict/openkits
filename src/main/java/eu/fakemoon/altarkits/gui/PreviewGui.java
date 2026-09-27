@@ -53,7 +53,7 @@ public final class PreviewGui implements KitsHolder {
         if (!(event.getWhoClicked() instanceof Player clicker)) return;
         if (event.getRawSlot() == SLOT_BACK) {
             clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1f);
-            plugin.sync(() -> KitsGui.open(plugin, clicker));
+            plugin.sync(clicker, () -> KitsGui.open(plugin, clicker));
         }
     }
 }

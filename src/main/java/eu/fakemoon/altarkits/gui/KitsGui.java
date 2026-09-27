@@ -145,25 +145,25 @@ public final class KitsGui implements KitsHolder {
         switch (slot) {
             case SLOT_CLOSE -> {
                 clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1f);
-                plugin.sync(clicker::closeInventory);
+                plugin.sync(clicker, clicker::closeInventory);
                 return;
             }
             case SLOT_LAYOUTS -> {
                 clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1f);
-                plugin.sync(() -> LayoutsGui.open(plugin, clicker));
+                plugin.sync(clicker, () -> LayoutsGui.open(plugin, clicker));
                 return;
             }
             case SLOT_PREV -> {
                 if (page > 0) {
                     clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-                    plugin.sync(() -> open(plugin, clicker, page - 1));
+                    plugin.sync(clicker, () -> open(plugin, clicker, page - 1));
                 }
                 return;
             }
             case SLOT_NEXT -> {
                 if (page < pages - 1) {
                     clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-                    plugin.sync(() -> open(plugin, clicker, page + 1));
+                    plugin.sync(clicker, () -> open(plugin, clicker, page + 1));
                 }
                 return;
             }
@@ -177,11 +177,11 @@ public final class KitsGui implements KitsHolder {
         ClickType click = event.getClick();
         if (click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT) {
             clicker.playSound(clicker.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
-            plugin.sync(() -> PreviewGui.open(plugin, clicker, kit));
+            plugin.sync(clicker, () -> PreviewGui.open(plugin, clicker, kit));
             return;
         }
         if (click == ClickType.LEFT || click == ClickType.SHIFT_LEFT) {
-            plugin.sync(() -> {
+            plugin.sync(clicker, () -> {
                 if (plugin.kits().claim(clicker, kit)) {
                     clicker.closeInventory();
                 } else {

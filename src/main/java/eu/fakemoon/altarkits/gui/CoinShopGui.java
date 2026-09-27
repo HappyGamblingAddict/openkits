@@ -110,12 +110,12 @@ public final class CoinShopGui implements KitsHolder {
 
         if (slot == SLOT_PREV && page > 0) {
             clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-            plugin.sync(() -> open(plugin, clicker, page - 1));
+            plugin.sync(clicker, () -> open(plugin, clicker, page - 1));
             return;
         }
         if (slot == SLOT_NEXT && page < pages - 1) {
             clicker.playSound(clicker.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 0.8f, 1.2f);
-            plugin.sync(() -> open(plugin, clicker, page + 1));
+            plugin.sync(clicker, () -> open(plugin, clicker, page + 1));
             return;
         }
 

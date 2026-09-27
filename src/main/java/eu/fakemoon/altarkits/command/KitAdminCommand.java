@@ -52,11 +52,11 @@ public final class KitAdminCommand implements CommandExecutor, TabCompleter {
             case "displayname" -> displayName(sender, args);
             case "give" -> give(sender, args);
             case "list" -> list(sender);
-            case "reload" -> {
+            case "reload" -> plugin.sync(() -> {
                 plugin.reloadConfig();
                 Messages.init(plugin);
                 Text.msg(sender, "<green>config.yml + messages.yml reloaded. Open menus update when reopened.");
-            }
+            });
             case "unstable" -> unstable(sender);
             default -> help(sender);
         }

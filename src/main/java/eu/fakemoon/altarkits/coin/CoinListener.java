@@ -25,9 +25,12 @@ public final class CoinListener implements Listener {
 
         long amount = plugin.getConfig().getLong("coins.per-kill", 10);
         if (amount <= 0) return;
-        plugin.playerData().addCoins(killer.getUniqueId(), amount);
-        killer.sendActionBar(Messages.get("coins.earned",
-                "amount", String.valueOf(amount),
-                "coins", String.valueOf(plugin.playerData().coins(killer.getUniqueId()))));
+        // This event fires on the victim's region, which on Folia is not the killer's.
+        plugin.sync(killer, () -> {
+            plugin.playerData().addCoins(killer.getUniqueId(), amount);
+            killer.sendActionBar(Messages.get("coins.earned",
+                    "amount", String.valueOf(amount),
+                    "coins", String.valueOf(plugin.playerData().coins(killer.getUniqueId()))));
+        });
     }
 }
