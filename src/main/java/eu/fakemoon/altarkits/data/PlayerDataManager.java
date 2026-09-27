@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Per-player cooldown expiries, coins, purchases and custom kit layouts, stored in
@@ -32,6 +33,8 @@ public final class PlayerDataManager implements Listener {
     private final File dir;
     private final Map<UUID, YamlConfiguration> cache = new HashMap<>();
     private final Map<UUID, String> pendingWrites = new ConcurrentHashMap<>();
+    private final AtomicBoolean writeRunning = new AtomicBoolean();
+    private volatile boolean stopped;
     private final Object ioLock = new Object();
 
     public PlayerDataManager(AltarKitsPlugin plugin) {
@@ -49,21 +52,38 @@ public final class PlayerDataManager implements Listener {
     }
 
     /**
-     * Serializes on the calling thread (fast, in-memory) but writes to disk async —
+     * Serializes on the calling thread (this YAML is small) but writes to disk async —
      * a synchronous write can stall for seconds when the folder is being synced
      * (e.g. OneDrive), which froze the server long enough to trip the watchdog.
+     * Writes are coalesced, so a burst of kills costs one pass, not one task each.
      */
     private synchronized void save(UUID id) {
         YamlConfiguration yaml = cache.get(id);
         if (yaml == null) return;
         pendingWrites.put(id, yaml.saveToString());
+        scheduleWrite();
+    }
+
+    /** Arms a single background pass; a pass already in flight picks up new entries. */
+    private void scheduleWrite() {
+        if (!writeRunning.compareAndSet(false, true)) return;
         plugin.async(() -> {
-            String data = pendingWrites.get(id);
-            if (data == null) return; // an earlier task already wrote fresher data
-            synchronized (ioLock) {
-                write(id, data);
+            try {
+                Map<UUID, String> batch = new HashMap<>(pendingWrites);
+                for (Map.Entry<UUID, String> entry : batch.entrySet()) {
+                    synchronized (ioLock) {
+                        // Once shutdown starts, flushSync owns the final write; landing
+                        // after it would put older data back on disk.
+                        if (stopped) return;
+                        write(entry.getKey(), entry.getValue());
+                    }
+                    // Only drop the entry if nothing fresher arrived while we were writing.
+                    pendingWrites.remove(entry.getKey(), entry.getValue());
+                }
+            } finally {
+                writeRunning.set(false);
+                if (!stopped && !pendingWrites.isEmpty()) scheduleWrite();
             }
-            pendingWrites.remove(id, data); // keep it queued if newer data arrived meanwhile
         });
     }
 
@@ -77,6 +97,7 @@ public final class PlayerDataManager implements Listener {
 
     /** Writes anything still queued, synchronously — called on plugin disable. */
     public void flushSync() {
+        stopped = true;
         synchronized (ioLock) {
             for (Map.Entry<UUID, String> entry : pendingWrites.entrySet()) {
                 write(entry.getKey(), entry.getValue());
