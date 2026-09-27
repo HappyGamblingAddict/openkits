@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class KitManager {
@@ -33,7 +34,9 @@ public final class KitManager {
     private final PlayerDataManager playerData;
     /** Concurrent because on Folia admin commands and player claims run on different threads. */
     private final Map<String, Kit> kits = new ConcurrentHashMap<>();
-    private final AtomicReference<String> pendingSave = new AtomicReference<>();
+    private final AtomicReference<List<Kit>> pendingSnapshot = new AtomicReference<>();
+    private final AtomicBoolean writeRunning = new AtomicBoolean();
+    private volatile boolean stopped;
     private final Object ioLock = new Object();
 
     public KitManager(AltarKitsPlugin plugin, PlayerDataManager playerData) {
@@ -82,9 +85,43 @@ public final class KitManager {
         }
     }
 
+    /**
+     * Snapshots every kit (cheap) here, then serializes and writes on the async
+     * scheduler. The snapshot is what keeps the YAML/base64 work — by far the most
+     * expensive part — off the caller's thread, which on Folia is a region thread.
+     * A burst of edits (dragging kits around the arranger) collapses into one write.
+     */
     public synchronized void saveAll() {
+        List<Kit> snapshot = new ArrayList<>(kits.size());
+        for (Kit kit : kits.values()) snapshot.add(kit.copy());
+        pendingSnapshot.set(snapshot);
+        scheduleWrite();
+    }
+
+    /** Arms a single background write; a write already in flight picks the new snapshot up. */
+    private void scheduleWrite() {
+        if (!writeRunning.compareAndSet(false, true)) return;
+        plugin.async(() -> {
+            try {
+                List<Kit> snapshot = pendingSnapshot.getAndSet(null);
+                if (snapshot == null) return;
+                String data = serialize(snapshot);
+                synchronized (ioLock) {
+                    // If the plugin started disabling, flushSync owns the final write —
+                    // letting this one land after it would revert kits.yml to an older state.
+                    if (stopped) return;
+                    write(data);
+                }
+            } finally {
+                writeRunning.set(false);
+                if (!stopped && pendingSnapshot.get() != null) scheduleWrite();
+            }
+        });
+    }
+
+    private static String serialize(List<Kit> snapshot) {
         YamlConfiguration yaml = new YamlConfiguration();
-        for (Kit kit : kits.values()) {
+        for (Kit kit : snapshot) {
             String path = "kits." + kit.name() + ".";
             yaml.set(path + "display-name", kit.displayName());
             yaml.set(path + "icon", Items.toBase64(kit.icon()));
@@ -96,16 +133,7 @@ public final class KitManager {
                 yaml.set(path + "contents." + entry.getKey(), Items.toBase64(entry.getValue()));
             }
         }
-        // Serialize on the calling thread, write async — sync writes can stall the
-        // server when the folder is being synced (e.g. OneDrive).
-        pendingSave.set(yaml.saveToString());
-        plugin.async(() -> {
-            String data = pendingSave.getAndSet(null);
-            if (data == null) return;
-            synchronized (ioLock) {
-                write(data);
-            }
-        });
+        return yaml.saveToString();
     }
 
     private void write(String data) {
@@ -116,12 +144,13 @@ public final class KitManager {
         }
     }
 
-    /** Writes a still-queued save, synchronously — called on plugin disable. */
+    /** Writes a still-queued snapshot, synchronously — called on plugin disable. */
     public void flushSync() {
-        String data = pendingSave.getAndSet(null);
-        if (data == null) return;
+        stopped = true;
+        List<Kit> snapshot = pendingSnapshot.getAndSet(null);
+        if (snapshot == null) return;
         synchronized (ioLock) {
-            write(data);
+            write(serialize(snapshot));
         }
     }
 
@@ -253,10 +282,10 @@ public final class KitManager {
     }
 
     /**
-     * Whether the kit fits entirely without anything dropping on the ground —
-     * a dry run of {@link #apply} against a copy of the inventory. Mirrors its
-     * logic: direct placement into empty content slots, then overflow via the
-     * storage slots (0-35, what {@link PlayerInventory#addItem} uses).
+     * Whether the kit fits entirely without anything dropping on the ground — a dry run
+     * of {@link #apply} against a copy of the inventory. Both go through
+     * {@link #place} so the check can never be more permissive than the placement
+     * (a drift there would let a claim dump items on the ground for anyone to grab).
      */
     private boolean wouldFit(Player player, Map<Integer, ItemStack> layout) {
         PlayerInventory inv = player.getInventory();
@@ -265,60 +294,106 @@ public final class KitManager {
             ItemStack current = inv.getItem(slot);
             sim[slot] = Items.isEmpty(current) ? null : current.clone();
         }
-        List<ItemStack> leftover = new ArrayList<>();
-        for (Map.Entry<Integer, ItemStack> entry : layout.entrySet()) {
-            int slot = entry.getKey();
-            if (slot < 0 || slot >= Kit.CONTENT_SLOTS) continue;
-            ItemStack item = entry.getValue().clone();
-            if (sim[slot] == null) {
-                sim[slot] = item;
-            } else {
-                leftover.add(item);
-            }
-        }
-        for (ItemStack item : leftover) {
-            int remaining = item.getAmount();
-            int max = item.getMaxStackSize();
-            for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
-                ItemStack s = sim[slot];
-                if (s == null || !s.isSimilar(item)) continue;
-                int moved = Math.min(max - s.getAmount(), remaining);
-                if (moved > 0) {
-                    s.setAmount(s.getAmount() + moved);
-                    remaining -= moved;
-                }
-            }
-            for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
-                if (sim[slot] != null) continue;
-                int moved = Math.min(max, remaining);
-                ItemStack placed = item.clone();
-                placed.setAmount(moved);
-                sim[slot] = placed;
-                remaining -= moved;
-            }
-            if (remaining > 0) return false;
-        }
-        return true;
+        return place(new ArraySlots(sim), layout).isEmpty();
     }
 
     /** Places a resolved layout. Must run on the player's own thread. */
     private void apply(Player player, Map<Integer, ItemStack> layout) {
-        PlayerInventory inv = player.getInventory();
-        List<ItemStack> leftover = new ArrayList<>();
+        for (ItemStack left : place(new InventorySlots(player.getInventory()), layout)) {
+            player.getWorld().dropItemNaturally(player.getLocation(), left);
+        }
+    }
+
+    /**
+     * Places a layout into the given slots and returns whatever could not be stored:
+     * direct placement into empty content slots, then overflow into storage (0-35,
+     * what {@link PlayerInventory#addItem} uses).
+     */
+    private static List<ItemStack> place(Slots slots, Map<Integer, ItemStack> layout) {
+        List<ItemStack> displaced = new ArrayList<>();
         for (Map.Entry<Integer, ItemStack> entry : layout.entrySet()) {
             int slot = entry.getKey();
             if (slot < 0 || slot >= Kit.CONTENT_SLOTS) continue;
             ItemStack item = entry.getValue().clone();
-            if (Items.isEmpty(inv.getItem(slot))) {
-                inv.setItem(slot, item);
+            if (Items.isEmpty(slots.get(slot))) {
+                slots.set(slot, item);
             } else {
-                leftover.add(item);
+                displaced.add(item);
             }
         }
-        for (ItemStack item : leftover) {
-            for (ItemStack overflow : inv.addItem(item).values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), overflow);
+        List<ItemStack> overflow = new ArrayList<>();
+        for (ItemStack item : displaced) {
+            overflow.addAll(slots.addAll(item));
+        }
+        return overflow;
+    }
+
+    /** Slot access, so the fit-check can run against a copy without touching the real inventory. */
+    private interface Slots {
+        ItemStack get(int slot);
+
+        void set(int slot, ItemStack item);
+
+        /** Adds the way {@link PlayerInventory#addItem} does, returning what did not fit. */
+        Collection<ItemStack> addAll(ItemStack item);
+    }
+
+    /** Backing store for the dry run: a plain array copy of the player's inventory. */
+    private record ArraySlots(ItemStack[] slots) implements Slots {
+
+        @Override
+        public ItemStack get(int slot) {
+            return slots[slot];
+        }
+
+        @Override
+        public void set(int slot, ItemStack item) {
+            slots[slot] = item;
+        }
+
+        @Override
+        public Collection<ItemStack> addAll(ItemStack item) {
+            List<ItemStack> left = new ArrayList<>();
+            int remaining = item.getAmount();
+            int max = item.getMaxStackSize();
+            for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
+                ItemStack stack = slots[slot];
+                if (stack == null || !stack.isSimilar(item)) continue;
+                int moved = Math.min(max - stack.getAmount(), remaining);
+                if (moved > 0) {
+                    stack.setAmount(stack.getAmount() + moved);
+                    remaining -= moved;
+                }
             }
+            for (int slot = 0; slot <= 35 && remaining > 0; slot++) {
+                if (slots[slot] != null) continue;
+                int moved = Math.min(max, remaining);
+                ItemStack placed = item.clone();
+                placed.setAmount(moved);
+                slots[slot] = placed;
+                remaining -= moved;
+            }
+            if (remaining > 0) left.add(item);
+            return left;
+        }
+    }
+
+    /** Backing store for the real thing. */
+    private record InventorySlots(PlayerInventory inv) implements Slots {
+
+        @Override
+        public ItemStack get(int slot) {
+            return inv.getItem(slot);
+        }
+
+        @Override
+        public void set(int slot, ItemStack item) {
+            inv.setItem(slot, item);
+        }
+
+        @Override
+        public Collection<ItemStack> addAll(ItemStack item) {
+            return inv.addItem(item).values();
         }
     }
 }

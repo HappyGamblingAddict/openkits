@@ -46,7 +46,11 @@ public final class Text {
         return out.toString().trim();
     }
 
-    /** Parses "1d2h30m", "90m", "45s", plain seconds, or "none"/"0". Returns -1 if invalid. */
+    /**
+     * Parses "1d2h30m", "90m", "45s", plain seconds, or "none"/"0". Returns -1 if
+     * invalid, if a number is too long to parse, or if the result would overflow —
+     * a wrapped-around negative would silently disable the cooldown entirely.
+     */
     public static long parseDuration(String input) {
         String s = input.toLowerCase(Locale.ROOT).trim();
         if (s.equals("none") || s.equals("0")) return 0;
@@ -55,13 +59,23 @@ public final class Text {
         boolean any = false;
         while (m.find()) {
             any = true;
-            long value = Long.parseLong(m.group(1));
-            total += switch (m.group(2)) {
-                case "d" -> value * 86400;
-                case "h" -> value * 3600;
-                case "m" -> value * 60;
-                default -> value;
+            long value;
+            try {
+                value = Long.parseLong(m.group(1));
+            } catch (NumberFormatException ex) {
+                return -1; // more digits than a long can hold
+            }
+            long unit = switch (m.group(2)) {
+                case "d" -> 86400;
+                case "h" -> 3600;
+                case "m" -> 60;
+                default -> 1;
             };
+            try {
+                total = Math.addExact(Math.multiplyExact(value, unit), total);
+            } catch (ArithmeticException ex) {
+                return -1; // out of range
+            }
         }
         if (any) return total;
         try {

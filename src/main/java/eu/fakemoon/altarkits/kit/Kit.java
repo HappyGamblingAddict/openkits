@@ -10,19 +10,22 @@ import java.util.Map;
 /**
  * A kit definition. Content slots use player-inventory indices:
  * 0-8 hotbar, 9-35 storage, 36-39 armor (boots, leggings, chestplate, helmet), 40 offhand.
+ *
+ * <p>Every field is volatile: on Folia an admin edits a kit on one region while
+ * players claim it on others, so writes have to be visible across threads.
  */
 public final class Kit {
 
     public static final int CONTENT_SLOTS = 41;
 
     private final String name;
-    private String displayName;
-    private ItemStack icon = new ItemStack(Material.CHEST);
-    private long cooldownSeconds;
-    private String permission = "";
-    private int order;
-    private int price;
-    private Map<Integer, ItemStack> contents = new HashMap<>();
+    private volatile String displayName;
+    private volatile ItemStack icon = new ItemStack(Material.CHEST);
+    private volatile long cooldownSeconds;
+    private volatile String permission = "";
+    private volatile int order;
+    private volatile int price;
+    private volatile Map<Integer, ItemStack> contents = new HashMap<>();
 
     public Kit(String name) {
         this.name = name;
@@ -97,5 +100,25 @@ public final class Kit {
 
     public boolean hasAccess(Player player) {
         return permission.isEmpty() || player.hasPermission(permission);
+    }
+
+    /**
+     * A deep copy, so kits.yml can be serialized on the async scheduler without
+     * reading a kit that another region is editing (see KitManager#saveAll).
+     */
+    public Kit copy() {
+        Kit clone = new Kit(name);
+        clone.displayName = displayName;
+        clone.icon = icon.clone();
+        clone.cooldownSeconds = cooldownSeconds;
+        clone.permission = permission;
+        clone.order = order;
+        clone.price = price;
+        Map<Integer, ItemStack> cloned = new HashMap<>();
+        for (Map.Entry<Integer, ItemStack> entry : contents.entrySet()) {
+            cloned.put(entry.getKey(), entry.getValue().clone());
+        }
+        clone.contents = cloned;
+        return clone;
     }
 }

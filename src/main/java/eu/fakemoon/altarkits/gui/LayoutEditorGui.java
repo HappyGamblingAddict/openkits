@@ -16,7 +16,10 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -161,12 +164,17 @@ public final class LayoutEditorGui implements KitsHolder {
             return;
         }
 
-        // If something is still on the cursor, count it toward the layout and void the
-        // cursor so the copy is never handed to the player.
+        // A kit item taken out of the layout sits on the cursor; count it back in so
+        // simply closing after a pick-up doesn't look like a broken layout.
         ItemStack cursor = event.getView().getCursor();
         ItemStack loose = Items.isEmpty(cursor) ? null : cursor.clone();
         if (loose != null) event.getView().setCursor(null);
         Map<Integer, ItemStack> layout = readContents(loose);
+
+        // Anything in here that is not one of the kit's own items was dragged in from
+        // the player's inventory while editing. Hand it back rather than deleting it.
+        List<ItemStack> borrowed = takeBorrowed(layout);
+        refund(borrowed);
 
         if (!Items.sameItems(layout.values(), kit.contents().values())) {
             Messages.send(player, "messages.layout-not-saved");
@@ -177,6 +185,44 @@ public final class LayoutEditorGui implements KitsHolder {
         } else {
             plugin.playerData().setLayout(player.getUniqueId(), kit.name(), layout);
             Messages.send(player, "messages.layout-saved");
+        }
+    }
+
+    /**
+     * Strips (and returns) every slot item that cannot be matched to one of the kit's
+     * items, so the player's own property is never mistaken for part of the layout.
+     */
+    private List<ItemStack> takeBorrowed(Map<Integer, ItemStack> layout) {
+        List<ItemStack> pool = new ArrayList<>();
+        for (ItemStack item : kit.contents().values()) {
+            if (!Items.isEmpty(item)) pool.add(item);
+        }
+        List<ItemStack> borrowed = new ArrayList<>();
+        for (Iterator<Map.Entry<Integer, ItemStack>> it = layout.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, ItemStack> entry = it.next();
+            int match = -1;
+            for (int i = 0; i < pool.size(); i++) {
+                if (pool.get(i).equals(entry.getValue())) {
+                    match = i;
+                    break;
+                }
+            }
+            if (match >= 0) {
+                pool.remove(match);
+            } else {
+                borrowed.add(entry.getValue());
+                it.remove();
+            }
+        }
+        return borrowed;
+    }
+
+    /** Puts items back in the player's inventory, dropping whatever does not fit. */
+    private void refund(List<ItemStack> items) {
+        for (ItemStack item : items) {
+            for (ItemStack left : player.getInventory().addItem(item.clone()).values()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), left);
+            }
         }
     }
 
